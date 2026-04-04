@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlumnusTrace</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page-wrap">
+    <header class="top-hero">
+        <div class="logo-tile" aria-hidden="true">
+            <img src="logo-umm-crest.svg" alt="Logo AlumnusTrace" class="logo-image">
+        </div>
+        <div class="hero-text">
+            <p class="hero-kicker">Alumni Insight Workspace</p>
+            <h1>AlumnusTrace</h1>
+            <p class="hero-subtitle">Platform pelacakan alumni untuk pencarian cepat, verifikasi data, dan pembaruan profil lulusan dalam satu dashboard.</p>
+        </div>
+    </header>
+
+    <div class="app-layout">
+        <aside class="side-panel">
+            <h2>Ringkasan Akses</h2>
+            <p>Masuk menggunakan akun admin untuk membuka formulir. Setelah itu, pilih alumni dari daftar atau cari langsung menggunakan NIM.</p>
+            <ul class="side-list">
+                <li><i class="bi bi-person-lock"></i> Autentikasi admin sebelum input</li>
+                <li><i class="bi bi-binoculars-fill"></i> Penelusuran NIM lebih presisi</li>
+                <li><i class="bi bi-cloud-check-fill"></i> Data tersambung ke spreadsheet</li>
+            </ul>
+        </aside>
+
+        <main class="main-panel">
+            <div id="authSection" class="card panel-card p-4 mb-4">
+                <h3 class="text-center mb-3">Akses Admin</h3>
+                <p class="text-center text-muted mb-4">Masukkan akun admin untuk membuka dashboard pengelolaan alumni.</p>
+                <div class="mb-3">
+                    <label class="form-label">ID Pengguna</label>
+                    <input type="text" id="usernameInput" class="form-control form-control-lg" placeholder="Ketik username admin">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Kata Sandi</label>
+                    <input type="password" id="passwordInput" class="form-control form-control-lg" placeholder="Ketik kata sandi">
+                </div>
+                <button onclick="loginAdmin()" class="btn btn-dark btn-lg w-100"><i class="bi bi-door-open-fill me-2"></i>Buka Dashboard</button>
+            </div>
+
+            <div class="lookup-layout">
+                <div id="previewSection" class="card panel-card p-4 hidden lookup-card preview-card">
+                    <div class="preview-head">
+                        <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>Direktori Alumni Cepat</h5>
+                        <p class="preview-note mb-0">Pilih baris untuk membuka detail profil</p>
+                    </div>
+                    <div class="preview-list-shell">
+                        <div class="preview-legend d-none d-md-grid">
+                            <span>ID NIM</span>
+                            <span>Nama</span>
+                            <span>Program</span>
+                        </div>
+                        <div id="tableBodyPreview" class="preview-list">
+                            <div class="preview-empty text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Memuat daftar...</div>
+                        </div>
+                    </div>
+                    <div class="preview-actions mt-3">
+                        <button id="btnLoadMore" type="button" class="btn btn-primary w-100 hidden" onclick="loadMorePreviewData()">
+                            <i class="bi bi-plus-circle me-2"></i>Muat Lebih Banyak
+                        </button>
+                    </div>
+                </div>
+
+                <div id="loginSection" class="card panel-card p-4 hidden lookup-card search-card">
+                    <h3 class="text-center mb-3">Cari Data Alumni</h3>
+                    <p class="text-center text-muted mb-4">Masukkan NIM untuk membuka profil alumni yang ingin diperbarui.</p>
+                    <div class="mb-3">
+                        <input type="text" id="nimInput" class="form-control form-control-lg" placeholder="95620626..... (Example)">
+                    </div>
+                    <button id="btnLanjutNim" onclick="mulaiPendataan()" class="btn btn-primary btn-lg w-100"><i class="bi bi-crosshair me-2"></i>Temukan NIM</button>
+                </div>
+            </div>
+
+            <div id="formSection" class="card panel-card p-4 hidden">
+                <div class="form-topbar">
+                    <button type="button" onclick="kembaliKePencarian()" class="btn btn-light btn-sm icon-only" aria-label="Kembali" title="Kembali"><i class="bi bi-arrow-return-left"></i></button>
+                </div>
+
+                <div class="identity-banner">
+                    <div class="identity-title-wrap">
+                        <p class="identity-kicker mb-1">Ringkasan Profil</p>
+                        <h4 class="mb-0">Perbarui Profil Alumni</h4>
+                    </div>
+
+                    <div class="alumni-card">
+                        <div class="alumni-card-icon" aria-hidden="true">
+                            <i class="bi bi-person-badge-fill"></i>
+                        </div>
+                        <div class="alumni-card-content">
+                            <p class="alumni-label mb-1">Data Alumni</p>
+                            <strong><span id="displayNama"></span></strong>
+                            <p class="mb-0 mt-1">NIM: <span id="displayNim"></span></p>
+                            <p class="mb-0">Prodi: <span id="displayProdi"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+                <form id="tracerForm">
+                    <h6 class="section-title"><i class="bi bi-envelope-paper-fill me-2"></i>1. Kontak Pribadi</h6>
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" id="email" class="form-control" placeholder="alumni@email.com" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label label-with-icon"><i class="bi bi-telephone-fill"></i> Nomor Telepon</label>
+                            <input type="tel" id="hp" class="form-control" placeholder="081234..." required>
+                        </div>
+                    </div>
+
+                    <h6 class="section-title"><i class="bi bi-globe2 me-2"></i>2. Sosial Media Pribadi</h6>
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Linked In</label>
+                            <input type="text" id="linkedin" class="form-control" placeholder="Link / Username">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label label-with-icon"><i class="bi bi-instagram"></i> Instagram</label>
+                            <input type="text" id="ig" class="form-control" placeholder="@username">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label label-with-icon"><i class="bi bi-tiktok"></i> TikTok</label>
+                            <input type="text" id="tiktok" class="form-control" placeholder="Username TikTok">
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Facebook</label>
+                            <input type="text" id="facebook" class="form-control" placeholder="Nama / Link Facebook">
+                        </div>
+                    </div>
+
+                    <h6 class="section-title"><i class="bi bi-building-check me-2"></i>3. Informasi Pekerjaan</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Status Pekerjaan</label>
+                            <select id="statusKerja" class="form-select">
+                                <option value="Swasta">Swasta</option>
+                                <option value="PNS">PNS</option>
+                                <option value="Wirausaha">Wirausaha</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Posisi Jabatan</label>
+                            <input type="text" id="posisi" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label class="form-label">Tempat Bekerja</label>
+                            <input type="text" id="kantor" class="form-control" required>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label">Sosial Media Kantor</label>
+                            <input type="text" id="sosmedKantor" class="form-control" placeholder="Website atau Instagram Kantor">
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label">Alamat Bekerja</label>
+                        <textarea id="alamatKantor" class="form-control" rows="2" required></textarea>
+                    </div>
+
+                    <button type="submit" id="btnSubmit" class="btn btn-success btn-lg w-100"><i class="bi bi-patch-check-fill me-2"></i>Terapkan Perubahan Data</button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <div class="footer-text">
+        &copy; 2026 AlumnusTrace. Hak cipta dilindungi.
+    </div>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
