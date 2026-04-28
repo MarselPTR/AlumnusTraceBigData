@@ -1,0 +1,12 @@
+# Pastikan file yang mengandung API Key tidak terupload ke GitHub
+Code.gs
+
+# File sistem & temporary
+.DS_Store
+Thumbs.db
+node_modules/
+.env
+
+# Metadata editor
+.vscode/
+.idea/
