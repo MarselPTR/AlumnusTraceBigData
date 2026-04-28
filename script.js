@@ -1,245 +1,296 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbzoxseR350vcQ6js8DblwhiRFI0q_y41TltWQOknCHqX6nprE_2akd6YXfBOEzoGK6Y/exec";
-const PREVIEW_PAGE_SIZE = 10;
+const API_URL = "https://script.google.com/macros/s/AKfycbyNthhJ9qLXq9xJrEpjA8GgBjyByZoVHczG1QIgL0GX3RRTP2tPPrC4hr7oB25kjluJ/exec";
+const PREVIEW_PAGE_SIZE = 15;
 
 let previewOffset = 0;
 let previewHasMore = false;
-
-function kembaliKePencarian() {
-    // Sembunyikan area Form Edit
-    document.getElementById('formSection').classList.add('hidden');
-    
-    // Tampilkan kembali form pencarian dan tabel daftar alumni
-    document.getElementById('loginSection').classList.remove('hidden');
-    document.getElementById('previewSection').classList.remove('hidden');
-    
-    // Bersihkan isi NIM agar siap mencari nama baru
-    document.getElementById('nimInput').value = "";
-    
-    // Otomatis meluncur ke atas
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
+let currentStats = null;
+let chartStatusInstance = null;
+let chartProdiInstance = null;
 
 function loginAdmin() {
     const user = document.getElementById('usernameInput').value.trim();
     const pass = document.getElementById('passwordInput').value;
+    const btn = event.target;
     
-    if (user === "admin" && pass === "admin223344") {
-        document.getElementById('authSection').classList.add('hidden');
-        document.getElementById('loginSection').classList.remove('hidden');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memverifikasi...';
+    btn.disabled = true;
+
+    fetch(API_URL + "?action=login&u=" + encodeURIComponent(user) + "&p=" + encodeURIComponent(pass))
+    .then(response => response.json())
+    .then(result => {
+        if (result.status === "success") {
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('analyticsSection').classList.remove('hidden');
+            
+            loadPreviewData();
+            loadDashboardStats();
+        } else {
+            alert(result.message);
+            btn.innerHTML = '<i class="bi bi-door-open-fill me-2"></i>Buka Dashboard';
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        alert("Gagal terhubung ke server login.");
+        btn.disabled = false;
+    });
+}
+
+function loadDashboardStats() {
+    fetch(API_URL + "?action=getStats")
+    .then(response => response.json())
+    .then(stats => {
+        currentStats = stats;
+        document.getElementById('statTotal').innerText = stats.total.toLocaleString();
+        document.getElementById('statFilled').innerText = stats.filled.toLocaleString();
         
-        // Mulai memuat data preview ke tabel
-        loadPreviewData();
-    } else {
-        alert("Username atau Password salah!");
+        const percent = Math.round((stats.filled / stats.total) * 100);
+        const pb = document.getElementById('batchProgressBar');
+        pb.style.width = percent + "%";
+        pb.innerText = percent + "%";
+
+        renderCharts(stats);
+        populateProdiFilter(stats.prodi);
+    });
+}
+
+function renderCharts(stats) {
+    // Chart Status Kerja
+    const ctxStatus = document.getElementById('chartStatusKerja').getContext('2d');
+    if(chartStatusInstance) chartStatusInstance.destroy();
+    chartStatusInstance = new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(stats.statusKerja),
+            datasets: [{
+                data: Object.values(stats.statusKerja),
+                backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e']
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    // Chart Prodi (Top 5)
+    const sortedProdi = Object.entries(stats.prodi).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const ctxProdi = document.getElementById('chartProdi').getContext('2d');
+    if(chartProdiInstance) chartProdiInstance.destroy();
+    chartProdiInstance = new Chart(ctxProdi, {
+        type: 'bar',
+        data: {
+            labels: sortedProdi.map(x => x[0]),
+            datasets: [{
+                label: 'Jumlah Alumni',
+                data: sortedProdi.map(x => x[1]),
+                backgroundColor: '#4e73df'
+            }]
+        },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
+    });
+}
+
+function populateProdiFilter(prodiObj) {
+    const filter = document.getElementById('filterProdi');
+    const sorted = Object.keys(prodiObj).sort();
+    sorted.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.innerText = p;
+        filter.appendChild(opt);
+    });
+}
+
+function filterBySearch() {
+    const nameQuery = document.getElementById('searchNameInput').value.trim();
+    if (nameQuery.length >= 2) {
+        searchByName(nameQuery);
+    } else if (nameQuery.length === 0) {
+        loadPreviewData(true);
     }
 }
-  
+
+function searchByName(query) {
+    const tbody = document.getElementById('tableBodyPreview');
+    tbody.innerHTML = "<div class='text-center py-3'><div class='spinner-border spinner-border-sm'></div> Mencari...</div>";
+    
+    fetch(API_URL + "?action=searchByName&q=" + encodeURIComponent(query))
+    .then(response => response.json())
+    .then(result => {
+        tbody.innerHTML = "";
+        if (result.data.length === 0) {
+            tbody.innerHTML = "<div class='text-center py-3'>Tidak ada nama yang cocok.</div>";
+            return;
+        }
+        renderTableRows(result.data);
+        document.getElementById('btnLoadMore').classList.add('hidden');
+    });
+}
+
 function loadPreviewData(reset = true) {
-    document.getElementById('previewSection').classList.remove('hidden');
     const tbody = document.getElementById('tableBodyPreview');
     const btnLoadMore = document.getElementById('btnLoadMore');
 
     if (reset) {
         previewOffset = 0;
-        previewHasMore = false;
-        tbody.innerHTML = "<div class='preview-empty text-center text-muted py-3'><div class='spinner-border spinner-border-sm me-2'></div>Memuat daftar...</div>";
+        tbody.innerHTML = "<div class='text-center py-3'><div class='spinner-border spinner-border-sm'></div> Memuat...</div>";
     }
 
-    btnLoadMore.disabled = true;
-    btnLoadMore.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Memuat...';
-    
     fetch(API_URL + "?action=getTop20&limit=" + PREVIEW_PAGE_SIZE + "&offset=" + previewOffset)
     .then(response => response.json())
     .then(result => {
-        if(result.status === "success") {
-            if (reset) {
-                tbody.innerHTML = "";
-            }
-            
-            if(result.data.length === 0) {
-                if (reset) {
-                    tbody.innerHTML = "<div class='preview-empty text-center text-muted py-3'>Belum ada data alumni.</div>";
-                }
-                previewHasMore = false;
-                updateLoadMoreButton();
-                return;
-            }
-
-            // Memasukkan setiap data ke dalam baris tabel
-            result.data.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'preview-item';
-                card.title = '';
-                
-                // Menambahkan fungsi agar baris bisa diklik
-                card.onclick = function() {
-                    document.getElementById('nimInput').value = item.nim;
-                    mulaiPendataan(); // Otomatis jalankan pencarian form
-                    window.scrollTo({ top: 0, behavior: 'smooth' }); // Layar otomatis naik ke atas
-                };
-
-                card.innerHTML = `
-                    <div class="preview-col col-nim"><span class="nim-pill">${item.nim}</span></div>
-                    <div class="preview-col col-name"><span class="name-main">${item.nama}</span></div>
-                    <div class="preview-col col-prodi"><span class="prodi-main">${item.prodi}</span></div>
-                `;
-                tbody.appendChild(card);
-            });
-
-            previewOffset = Number(result.nextOffset || (previewOffset + result.data.length));
-
-            // Fallback: jika API lama belum kirim hasMore/nextOffset,
-            // anggap masih ada data jika jumlah item sama dengan page size.
-            if (typeof result.hasMore === 'boolean') {
-                previewHasMore = result.hasMore;
-            } else {
-                previewHasMore = result.data.length >= PREVIEW_PAGE_SIZE;
-            }
-
-            updateLoadMoreButton();
-        }
-    })
-    .catch(err => {
-        if (reset) {
-            tbody.innerHTML = "<div class='preview-empty text-center text-danger py-3'>Gagal memuat preview data. Pastikan Apps Script jalan.</div>";
-        }
-        previewHasMore = false;
-        updateLoadMoreButton();
+        if (reset) tbody.innerHTML = "";
+        renderTableRows(result.data);
+        
+        previewOffset += result.data.length;
+        previewHasMore = result.hasMore;
+        
+        if (previewHasMore) btnLoadMore.classList.remove('hidden');
+        else btnLoadMore.classList.add('hidden');
     });
 }
 
-function updateLoadMoreButton() {
-    const btnLoadMore = document.getElementById('btnLoadMore');
-    btnLoadMore.innerHTML = '<i class="bi bi-plus-circle me-2"></i>Muat Lebih Banyak';
-    btnLoadMore.disabled = false;
-
-    if (previewHasMore) {
-        btnLoadMore.classList.remove('hidden');
-    } else {
-        btnLoadMore.classList.add('hidden');
-    }
+function renderTableRows(data) {
+    const tbody = document.getElementById('tableBodyPreview');
+    data.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'preview-item';
+        card.onclick = () => {
+            document.getElementById('nimInput').value = item.nim;
+            mulaiPendataan();
+        };
+        card.innerHTML = `
+            <div class="preview-col col-nim"><span class="nim-pill">${item.nim}</span></div>
+            <div class="preview-col col-name"><span class="name-main">${item.nama}</span></div>
+            <div class="preview-col col-prodi"><span class="prodi-main">${item.prodi}</span></div>
+        `;
+        tbody.appendChild(card);
+    });
 }
 
-function loadMorePreviewData() {
-    if (!previewHasMore) {
-        return;
-    }
-    loadPreviewData(false);
-}
-  
-function mulaiPendataan() {
-    const nim = document.getElementById('nimInput').value.trim();
-    if(nim === "") {
-        alert("Harap masukkan NIM terlebih dahulu!");
-        return;
-    }
+function triggerBatch() {
+    const btn = document.getElementById('btnBatchRun');
+    const info = document.getElementById('batchStatusInfo');
     
-    const btn = document.getElementById('btnLanjutNim');
-    btn.innerHTML = '<i class="bi bi-compass me-2"></i>Mencari Data...';
     btn.disabled = true;
+    info.classList.remove('hidden');
+    info.innerText = "⏳ Memproses 10 data...";
 
-    
-    fetch(API_URL + "?nim=" + encodeURIComponent(nim))
+    fetch(API_URL + "?action=runBatch")
     .then(response => response.json())
     .then(result => {
-        
+        btn.disabled = false;
+        if (result.status === "success") {
+            info.innerText = `✅ Berhasil memproses ${result.processed} data. Tersisa ${result.remaining} lagi.`;
+            loadDashboardStats();
+        } else {
+            info.innerText = "❌ Gagal: " + result.message;
+        }
+    });
+}
+
+function exportToCSV() {
+    alert("Menyiapkan ekspor data... Proses ini mengambil data langsung dari Spreadsheet.");
+    window.open(API_URL + "?action=getTop20&limit=1000&offset=0"); // Contoh sederhana, idealnya menggunakan download blob
+}
+
+function mulaiPendataan() {
+    const nim = document.getElementById('nimInput').value.trim();
+    if(!nim) return alert("Masukkan NIM!");
+    
+    const btn = document.getElementById('btnLanjutNim');
+    btn.innerHTML = "Mencari...";
+    btn.disabled = true;
+
+    fetch(API_URL + "?nim=" + nim)
+    .then(response => response.json())
+    .then(result => {
         btn.innerHTML = '<i class="bi bi-crosshair me-2"></i>Temukan NIM';
         btn.disabled = false;
 
         if (result.status === "success") {
-            
             document.getElementById('displayNama').innerText = result.nama;
             document.getElementById('displayProdi').innerText = result.prodi;
             document.getElementById('displayNim').innerText = result.nim;
 
-            
-            document.getElementById('email').value = result.email;
-            document.getElementById('hp').value = result.hp;
-            document.getElementById('linkedin').value = result.linkedin;
-            document.getElementById('ig').value = result.ig;
-            document.getElementById('tiktok').value = result.tiktok;
-            document.getElementById('facebook').value = result.facebook;
-            document.getElementById('kantor').value = result.kantor;
-            document.getElementById('alamatKantor').value = result.alamatKantor;
-            document.getElementById('posisi').value = result.posisi;
-            document.getElementById('sosmedKantor').value = result.sosmedKantor;
+            const fields = ['email','hp','linkedin','ig','tiktok','facebook','kantor','alamatKantor','posisi','sosmedKantor','statusKerja'];
+            fields.forEach(f => {
+                if(document.getElementById(f)) document.getElementById(f).value = result[f] || "";
+            });
 
-            if (result.statusKerja !== "") {
-                document.getElementById('statusKerja').value = result.statusKerja;
-            } else {
-                document.getElementById('statusKerja').selectedIndex = 0;
-            }
-
-            
-            document.getElementById('authSection').classList.add('hidden'); 
             document.getElementById('loginSection').classList.add('hidden');
-            document.getElementById('previewSection').classList.add('hidden'); // Hilangkan tabel preview saat mengisi form
+            document.getElementById('previewSection').classList.add('hidden');
+            document.getElementById('analyticsSection').classList.add('hidden');
             document.getElementById('formSection').classList.remove('hidden');
-
-        } else if (result.status === "not_found") {
-            alert("Maaf, NIM " + nim + " tidak dapat ditemukan di Database. Pastikan NIM yang Anda masukkan benar.");
         } else {
-            alert("Error Sistem: " + result.message);
+            alert("NIM tidak ditemukan.");
         }
-    })
-    .catch(error => {
-        alert("Gagal terhubung dengan server Google. Coba lagi dalam beberapa saat.");
-        btn.innerHTML = '<i class="bi bi-crosshair me-2"></i>Temukan NIM';
-        btn.disabled = false;
     });
 }
 
+function scrapeWithGrok() {
+    const nama = document.getElementById('displayNama').innerText;
+    const prodi = document.getElementById('displayProdi').innerText;
+    const nim = document.getElementById('displayNim').innerText;
+    const btn = document.getElementById('btnGrokScrape');
+    
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Meneliti...';
+    btn.disabled = true;
+
+    fetch(API_URL + "?action=scrapeAI&nama=" + encodeURIComponent(nama) + "&prodi=" + encodeURIComponent(prodi) + "&nim=" + encodeURIComponent(nim))
+    .then(response => response.json())
+    .then(result => {
+        btn.innerHTML = '<i class="bi bi-stars me-1"></i> Scrape dengan Gemini AI';
+        btn.disabled = false;
+
+        if (result.status === "success") {
+            const d = result.data;
+            const fields = ['email','hp','linkedin','ig','tiktok','facebook','kantor','alamatKantor','posisi','sosmedKantor','statusKerja'];
+            fields.forEach(f => {
+                if(d[f]) document.getElementById(f).value = d[f];
+            });
+            alert("Data berhasil ditemukan oleh AI!");
+        } else {
+            alert("AI tidak menemukan data baru.");
+        }
+    });
+}
+
+function kembaliKePencarian() {
+    document.getElementById('formSection').classList.add('hidden');
+    document.getElementById('loginSection').classList.remove('hidden');
+    document.getElementById('previewSection').classList.remove('hidden');
+    document.getElementById('analyticsSection').classList.remove('hidden');
+    document.getElementById('nimInput').value = "";
+}
 
 document.getElementById('tracerForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    
-    
-    if(API_URL === "MASUKKAN_URL_ANDA_DI_SINI") {
-        alert("Gagal: URL API Google Apps Script belum dimasukkan ke dalam kode HTML.");
-        return;
-    }
-
     const btn = document.getElementById('btnSubmit');
-    btn.innerText = "Menyimpan data...";
+    btn.innerText = "Menyimpan...";
     btn.disabled = true;
 
-    
     const payload = {
+        action: "update",
         nim: document.getElementById('displayNim').innerText,
-        linkedin: document.getElementById('linkedin').value,
-        ig: document.getElementById('ig').value,
         email: document.getElementById('email').value,
         hp: document.getElementById('hp').value,
+        linkedin: document.getElementById('linkedin').value,
+        ig: document.getElementById('ig').value,
         tiktok: document.getElementById('tiktok').value,
         facebook: document.getElementById('facebook').value,
-        alamatKantor: document.getElementById('alamatKantor').value,
         kantor: document.getElementById('kantor').value,
+        alamatKantor: document.getElementById('alamatKantor').value,
         posisi: document.getElementById('posisi').value,
         statusKerja: document.getElementById('statusKerja').value,
         sosmedKantor: document.getElementById('sosmedKantor').value
     };
 
-    // MENGUBAH JALUR MENJADI 'GET' AGAR TIDAK DIBLOKIR GOOGLE SAMA SEKALI
-    // Kita menumpang jalur pencarian yang sudah terbukti lolos keamanan
-    const queryParams = new URLSearchParams(payload).toString();
-
-    fetch(API_URL + "?action=update&" + queryParams, {
-        method: 'GET'
-    })
-    .then(response => response.json()) // Kini kita bisa dengan bangga melihat respon Google
+    fetch(API_URL + "?" + new URLSearchParams(payload).toString())
+    .then(response => response.json())
     .then(result => {
-        if (result.status === "success") {
-            alert("Berhasil! Perubahan data alumni sudah tersimpan.");
-            kembaliKePencarian(); 
-            loadPreviewData(); // Refresh tabel admin
-        } else {
-            alert("Gagal! Respons dari Server Spreadsheet Anda: " + result.message);
-        }
-        btn.innerHTML = '<i class="bi bi-patch-check-fill me-2"></i>Terapkan Perubahan Data';
-        btn.disabled = false;
-    })
-    .catch(error => {
-        alert("Internet Tiba-Tiba Terputus: " + error.message);
+        alert("Data berhasil disimpan!");
+        kembaliKePencarian();
+        loadDashboardStats();
         btn.innerHTML = '<i class="bi bi-patch-check-fill me-2"></i>Terapkan Perubahan Data';
         btn.disabled = false;
     });

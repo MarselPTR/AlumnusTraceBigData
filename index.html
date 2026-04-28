@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 <div class="page-wrap">
@@ -47,12 +48,69 @@
                 <button onclick="loginAdmin()" class="btn btn-dark btn-lg w-100"><i class="bi bi-door-open-fill me-2"></i>Buka Dashboard</button>
             </div>
 
+            <div id="analyticsSection" class="hidden">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card p-3 text-center">
+                            <p class="mb-1 text-muted">Total Alumni</p>
+                            <h2 id="statTotal" class="mb-0">-</h2>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card p-3 text-center">
+                            <p class="mb-1 text-muted">Terisi AI</p>
+                            <h2 id="statFilled" class="mb-0">-</h2>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card stat-card p-3">
+                            <p class="mb-2 text-muted text-center">Progress Scraping Keseluruhan</p>
+                            <div class="progress" style="height: 25px;">
+                                <div id="batchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="card panel-card p-3">
+                            <h6 class="text-center mb-3">Distribusi Status Kerja</h6>
+                            <canvas id="chartStatusKerja" height="200"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card panel-card p-3">
+                            <h6 class="text-center mb-3">5 Besar Program Studi</h6>
+                            <canvas id="chartProdi" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="lookup-layout">
                 <div id="previewSection" class="card panel-card p-4 hidden lookup-card preview-card">
                     <div class="preview-head">
                         <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>Direktori Alumni Cepat</h5>
-                        <p class="preview-note mb-0">Pilih baris untuk membuka detail profil</p>
+                        <div class="d-flex gap-2 mt-3 mt-md-0">
+                            <button onclick="exportToCSV()" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Ekspor CSV</button>
+                        </div>
                     </div>
+                    
+                    <div class="row g-2 my-3">
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" id="searchNameInput" class="form-control" placeholder="Cari berdasarkan nama..." onkeyup="filterBySearch()">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <select id="filterProdi" class="form-select" onchange="filterBySearch()">
+                                <option value="">Semua Program Studi</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="preview-list-shell">
                         <div class="preview-legend d-none d-md-grid">
                             <span>ID NIM</span>
@@ -77,6 +135,14 @@
                         <input type="text" id="nimInput" class="form-control form-control-lg" placeholder="95620626..... (Example)">
                     </div>
                     <button id="btnLanjutNim" onclick="mulaiPendataan()" class="btn btn-primary btn-lg w-100"><i class="bi bi-crosshair me-2"></i>Temukan NIM</button>
+                    
+                    <div class="mt-4 pt-3 border-top">
+                        <p class="small text-muted text-center mb-2">Otomatisasi Masal (Background)</p>
+                        <div id="batchStatusInfo" class="small text-center mb-2 hidden">Menunggu proses...</div>
+                        <button id="btnBatchRun" onclick="triggerBatch()" class="btn btn-outline-secondary w-100">
+                            <i class="bi bi-stack me-2"></i> Jalankan Batch Scraper (10 Data)
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -86,9 +152,14 @@
                 </div>
 
                 <div class="identity-banner">
-                    <div class="identity-title-wrap">
-                        <p class="identity-kicker mb-1">Ringkasan Profil</p>
-                        <h4 class="mb-0">Perbarui Profil Alumni</h4>
+                    <div class="identity-title-wrap d-flex justify-content-between align-items-center w-100">
+                        <div>
+                            <p class="identity-kicker mb-1">Ringkasan Profil</p>
+                            <h4 class="mb-0">Perbarui Profil Alumni</h4>
+                        </div>
+                        <button type="button" id="btnGrokScrape" onclick="scrapeWithGrok()" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-stars me-1"></i> Scrape dengan Gemini AI
+                        </button>
                     </div>
 
                     <div class="alumni-card">

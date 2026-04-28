@@ -12,12 +12,24 @@ function doGet(e) {
     var params = (e && e.parameter) ? e.parameter : {};
     var action = (params.action || "").toString().trim();
 
-    if (action === "update") {
-      return handleUpdate_(params);
+    if (action === "login") {
+      return handleLogin_(params);
     }
 
-    if (action === "getTop20") {
-      return handleTop20_(params);
+    if (action === "getStats") {
+      return handleGetStats_();
+    }
+
+    if (action === "searchByName") {
+      return handleSearchByName_(params);
+    }
+
+    if (action === "scrapeAI") {
+      return handleGeminiScraping_(params);
+    }
+
+    if (action === "runBatch") {
+      return handleBatchRequest_();
     }
 
     return handleFindByNim_(params);
@@ -26,117 +38,181 @@ function doGet(e) {
   }
 }
 
-function handleUpdate_(params) {
-  var nimToUpdate = (params.nim || "").toString().trim();
-  if (!nimToUpdate) {
-    return json_({ status: "error", message: "NIM wajib diisi." });
-  }
-
-  var sheet = getSheet_();
-  var found = sheet.getRange("B:B").createTextFinder(nimToUpdate).matchEntireCell(true).findNext();
-
-  if (!found) {
-    return json_({ status: "error", message: "NIM tidak ditemukan." });
-  }
-
-  var rowIdx = found.getRow();
-
-  // Kolom G(7) sampai Q(17) = 11 kolom
-  // G Linked In, H Instagram, I Email, J Nomor Telepon, K TikTok,
-  // L Facebook, M Alamat Bekerja, N Tempat Bekerja, O Posisi Jabatan,
-  // P Status Pekerjaan, Q Sosial Media Kantor
-  var dataUpdate = [[
-    params.linkedin || "",
-    params.ig || "",
-    params.email || "",
-    params.hp || "",
-    params.tiktok || "",
-    params.facebook || "",
-    params.alamatKantor || "",
-    params.kantor || "",
-    params.posisi || "",
-    params.statusKerja || "",
-    params.sosmedKantor || ""
-  ]];
-
-  sheet.getRange(rowIdx, 7, 1, 11).setValues(dataUpdate);
-  return json_({ status: "success", message: "Data terupdate!" });
-}
-
-function handleTop20_(params) {
-  var sheet = getSheet_();
-  var dataRows = Math.max(0, sheet.getLastRow() - 1); // exclude header row
-  var limit = parseInt(params.limit, 10);
-  var offset = parseInt(params.offset, 10);
-
-  if (isNaN(limit) || limit < 1) {
-    limit = 10;
-  }
-  if (limit > 50) {
-    limit = 50;
-  }
-
-  if (isNaN(offset) || offset < 0) {
-    offset = 0;
-  }
-
-  if (dataRows === 0 || offset >= dataRows) {
-    return json_({ status: "success", data: [], hasMore: false, nextOffset: offset, total: dataRows });
-  }
-
-  var maxRows = Math.min(limit, dataRows - offset);
-
-  // Ambil kolom A..F: nama(0), nim(1), prodi(5)
-  var values = sheet.getRange(2 + offset, 1, maxRows, 6).getValues();
-  var data = [];
-
-  for (var i = 0; i < values.length; i++) {
-    data.push({
-      nama: values[i][0] || "-",
-      nim: values[i][1] || "-",
-      prodi: values[i][5] || "-"
-    });
-  }
-
-  var nextOffset = offset + maxRows;
-  var hasMore = nextOffset < dataRows;
-
-  return json_({ status: "success", data: data, hasMore: hasMore, nextOffset: nextOffset, total: dataRows });
-}
-
-function handleFindByNim_(params) {
-  var nimToFind = (params.nim || "").toString().trim();
-  if (!nimToFind) {
-    return json_({ status: "error", message: "Parameter tidak lengkap." });
-  }
-
-  var sheet = getSheet_();
-  var found = sheet.getRange("B:B").createTextFinder(nimToFind).matchEntireCell(true).findNext();
-
-  if (!found) {
-    return json_({ status: "not_found" });
-  }
-
-  var rowIndex = found.getRow();
-  var rowData = sheet.getRange(rowIndex, 1, 1, 17).getValues()[0];
-
-  return json_({
-    status: "success",
-    nama: rowData[0] || "",
-    nim: rowData[1] || "",
-    prodi: rowData[5] || "",
-    linkedin: rowData[6] || "",
-    ig: rowData[7] || "",
-    email: rowData[8] || "",
-    hp: rowData[9] || "",
-    tiktok: rowData[10] || "",
-    facebook: rowData[11] || "",
-    alamatKantor: rowData[12] || "",
-    kantor: rowData[13] || "",
-    posisi: rowData[14] || "",
-    statusKerja: rowData[15] || "",
-    sosmedKantor: rowData[16] || ""
+/**
+ * FUNGSI BATCH SCRAPER (Mencicil data di background)
+ */
+function handleBatchRequest_() {
+  var stats = runBatchScraper();
+  return json_({ 
+    status: "success", 
+    message: "Batch selesai (10 data).",
+    processed: stats.processed,
+    remaining: stats.remaining 
   });
+}
+
+function runBatchScraper() {
+  var sheet = getSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return {processed: 0, remaining: 0};
+
+  var dataRange = sheet.getRange(2, 1, lastRow - 1, 17).getValues(); 
+  var batchSize = 10; 
+  var processedCount = 0;
+  var emptyCount = 0;
+
+  for (var i = 0; i < dataRange.length; i++) {
+    var rowData = dataRange[i];
+    var rowIndex = i + 2;
+    
+    if (!rowData[8]) { // Cek kolom Email
+      emptyCount++;
+      if (processedCount < batchSize) {
+        var result = handleGeminiScraping_({nama: rowData[0], prodi: rowData[5], nim: rowData[1]});
+        if (result.status === "success") {
+          var d = result.data;
+          var updateRange = [[
+            d.linkedin || "", d.ig || "", d.email || "", d.hp || "", d.tiktok || "",
+            d.facebook || "", d.alamatKantor || "", d.kantor || "", d.posisi || "",
+            d.statusKerja || "", d.sosmedKantor || ""
+          ]];
+          sheet.getRange(rowIndex, 7, 1, 11).setValues(updateRange);
+          processedCount++;
+        }
+        Utilities.sleep(1000);
+      }
+    }
+  }
+  return { processed: processedCount, remaining: emptyCount - processedCount };
+}
+
+/**
+ * Keamanan Login di Sisi Server
+ */
+function handleLogin_(params) {
+  var user = params.u || "";
+  var pass = params.p || "";
+  // GANTI PASSWORD DI SINI
+  if (user === "admin" && pass === "admin223344") {
+    return json_({ status: "success", token: "AUTH_OK_" + new Date().getTime() });
+  }
+  return json_({ status: "error", message: "ID Pengguna atau Kata Sandi salah!" });
+}
+
+/**
+ * Statistik Analitik untuk Dashboard
+ */
+function handleGetStats_() {
+  var sheet = getSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return json_({ total: 0 });
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+  var stats = {
+    total: data.length,
+    filled: 0,
+    statusKerja: { "Swasta": 0, "PNS": 0, "Wirausaha": 0, "Lainnya": 0 },
+    prodi: {}
+  };
+
+  data.forEach(function(row) {
+    if (row[8]) stats.filled++; // Kolom Email terisi
+    
+    var sk = row[15] || "Lainnya";
+    if (stats.statusKerja[sk] !== undefined) stats.statusKerja[sk]++;
+    else stats.statusKerja["Lainnya"]++;
+
+    var pr = row[5] || "Tidak Diketahui";
+    stats.prodi[pr] = (stats.prodi[pr] || 0) + 1;
+  });
+
+  return json_(stats);
+}
+
+/**
+ * Pencarian Berdasarkan Nama
+ */
+function handleSearchByName_(params) {
+  var query = (params.q || "").toLowerCase();
+  var sheet = getSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return json_({ data: [] });
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  var results = [];
+
+  for (var i = 0; i < data.length; i++) {
+    if (data[i][0].toString().toLowerCase().indexOf(query) !== -1) {
+      results.push({
+        nama: data[i][0],
+        nim: data[i][1],
+        prodi: data[i][5]
+      });
+    }
+    if (results.length >= 20) break; // Limit 20 hasil pencarian
+  }
+  return json_({ status: "success", data: results });
+}
+
+/**
+ * Scraping data alumni menggunakan Gemini AI (Gratis)
+ */
+function handleGeminiScraping_(params) {
+  var nama = params.nama || "";
+  var prodi = params.prodi || "";
+  var nim = params.nim || "";
+
+  // DAPATKAN API KEY GRATIS DI: https://aistudio.google.com/
+  var GEMINI_API_KEY = "MASUKKAN_API_KEY_GEMINI_ANDA"; 
+  
+  if (!nama) {
+    return json_({ status: "error", message: "Nama alumni diperlukan." });
+  }
+
+  var prompt = "Tugas: Riset Data Alumni Profesional\n" +
+               "Subjek: " + nama + "\n" +
+               "Program Studi: " + prodi + "\n" +
+               "Institusi: Universitas Muhammadiyah Malang (UMM)\n" +
+               "NIM: " + nim + "\n\n" +
+               "Instruksi Khusus:\n" +
+               "1. Cari jejak digital profesional orang ini di LinkedIn, situs perusahaan, atau direktori alumni.\n" +
+               "2. Pastikan orang yang ditemukan adalah lulusan UMM sesuai prodi tersebut. Jika ada keraguan karena nama yang pasaran, prioritaskan yang berlokasi di Indonesia atau memiliki riwayat pendidikan UMM.\n" +
+               "3. Ekstrak informasi karir saat ini (Nama Kantor, Jabatan, Lokasi Kantor).\n" +
+               "4. Cari username sosial media jika tersedia secara publik.\n" +
+               "5. Jika data tidak ditemukan sama sekali, kembalikan string kosong.\n\n" +
+               "Output harus JSON murni tanpa penjelasan apapun:\n" +
+               "{ \"linkedin\": \"\", \"ig\": \"\", \"email\": \"\", \"hp\": \"\", \"tiktok\": \"\", \"facebook\": \"\", \"alamatKantor\": \"\", \"kantor\": \"\", \"posisi\": \"\", \"statusKerja\": \"\", \"sosmedKantor\": \"\" }";
+
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + GEMINI_API_KEY;
+
+  try {
+    var payload = {
+      "contents": [{ "parts": [{ "text": prompt }] }]
+    };
+
+    var options = {
+      "method": "post",
+      "contentType": "application/json",
+      "payload": JSON.stringify(payload),
+      "muteHttpExceptions": true
+    };
+
+    var response = UrlFetchApp.fetch(url, options);
+    var resJson = JSON.parse(response.getContentText());
+    
+    if (!resJson.candidates || resJson.candidates.length === 0) {
+      return json_({ status: "error", message: "AI tidak memberikan jawaban." });
+    }
+
+    var aiText = resJson.candidates[0].content.parts[0].text;
+    aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+    
+    var scrapedData = JSON.parse(aiText);
+    return json_({ status: "success", data: scrapedData });
+
+  } catch (err) {
+    return json_({ status: "error", message: "Scraping Gagal: " + err.toString() });
+  }
 }
 
 function getSheet_() {
