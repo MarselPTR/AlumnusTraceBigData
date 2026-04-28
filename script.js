@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxz7JExvFpH3Xic24E4yxOMVt5qq--kilf1N8sNrszROQwB6Kt3JK7Me7bH1uIgC7tV/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbx0Xo0hSTwEyr_I0wlwbyDouIq5pywI2PSEVOMlEICYmyWMgmg2OEn3pj7WAIBkB-im/exec";
 const PREVIEW_PAGE_SIZE = 15;
 
 let previewOffset = 0;
