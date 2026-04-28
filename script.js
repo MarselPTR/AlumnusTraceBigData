@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbx0Xo0hSTwEyr_I0wlwbyDouIq5pywI2PSEVOMlEICYmyWMgmg2OEn3pj7WAIBkB-im/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyyV2yZlK-f4reak4CQNk3YqT-0F1FMlzWbUG7ynkrlCxCBBzMhO_xni5IGiWvUIa1O/exec";
 const PREVIEW_PAGE_SIZE = 15;
 
 let previewOffset = 0;
@@ -264,13 +264,23 @@ function scrapeWithGrok() {
 
         if (result.status === "success") {
             const d = result.data;
+            let foundCount = 0;
             const fields = ['email','hp','linkedin','ig','tiktok','facebook','kantor','alamatKantor','posisi','sosmedKantor','statusKerja'];
+            
             fields.forEach(f => {
-                if(d[f]) document.getElementById(f).value = d[f];
+                if(d[f] && d[f].length > 1) {
+                    document.getElementById(f).value = d[f];
+                    foundCount++;
+                }
             });
-            alert("Data berhasil ditemukan oleh AI!");
+
+            if (foundCount > 0) {
+                alert("AI berhasil menemukan " + foundCount + " informasi baru!");
+            } else {
+                alert("AI sudah mencari, tapi belum menemukan informasi publik yang valid untuk alumni ini.");
+            }
         } else {
-            alert("AI tidak menemukan data baru.");
+            alert("Gagal memanggil AI: " + (result.message || "Unknown Error"));
         }
     });
 }
