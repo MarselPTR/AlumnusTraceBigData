@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyNthhJ9qLXq9xJrEpjA8GgBjyByZoVHczG1QIgL0GX3RRTP2tPPrC4hr7oB25kjluJ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbz-qD6R-c46s4xUXj76FnkGhuttxs-4AnyXHZLQoNasOSq48NdxC6jkvvzIkivznuWa/exec";
 const PREVIEW_PAGE_SIZE = 15;
 
 let previewOffset = 0;
@@ -38,20 +38,40 @@ function loginAdmin() {
 }
 
 function loadDashboardStats() {
+    const totalEl = document.getElementById('statTotal');
+    const filledEl = document.getElementById('statFilled');
+    
+    totalEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    filledEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
     fetch(API_URL + "?action=getStats")
     .then(response => response.json())
     .then(stats => {
         currentStats = stats;
-        document.getElementById('statTotal').innerText = stats.total.toLocaleString();
-        document.getElementById('statFilled').innerText = stats.filled.toLocaleString();
+        totalEl.innerText = stats.total.toLocaleString();
         
-        const percent = Math.round((stats.filled / stats.total) * 100);
+        const filled = stats.filled;
+        filledEl.innerText = filled.toLocaleString();
+        
+        // Perbaikan kalkulasi persen agar tidak NaN atau tak terhingga
+        let percent = 0;
+        if (stats.total > 0) {
+            percent = Math.min(100, Math.round((filled / stats.total) * 100));
+        }
+        
         const pb = document.getElementById('batchProgressBar');
         pb.style.width = percent + "%";
         pb.innerText = percent + "%";
 
         renderCharts(stats);
-        populateProdiFilter(stats.prodi);
+        if (stats.prodi && Object.keys(stats.prodi).length > 0) {
+            populateProdiFilter(stats.prodi);
+        }
+    })
+    .catch(err => {
+        totalEl.innerText = "Error";
+        filledEl.innerText = "Error";
+        console.error("Stats Load Error:", err);
     });
 }
 

@@ -107,22 +107,28 @@ function handleGetStats_() {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return json_({ total: 0 });
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+  // OPTIMASI: Hanya ambil 10.000 data terakhir untuk statistik agar tidak LAG/Timeout
+  // Mengolah 140rb data sekaligus dalam satu request akan membuat sistem crash.
+  var startRow = Math.max(2, lastRow - 10000);
+  var numRows = lastRow - startRow + 1;
+  
+  var data = sheet.getRange(startRow, 1, numRows, 17).getValues();
   var stats = {
-    total: data.length,
+    total: lastRow - 1,
+    processedSample: data.length,
     filled: 0,
     statusKerja: { "Swasta": 0, "PNS": 0, "Wirausaha": 0, "Lainnya": 0 },
     prodi: {}
   };
 
   data.forEach(function(row) {
-    if (row[8]) stats.filled++; // Kolom Email terisi
+    if (row[8]) stats.filled++; 
     
     var sk = row[15] || "Lainnya";
     if (stats.statusKerja[sk] !== undefined) stats.statusKerja[sk]++;
     else stats.statusKerja["Lainnya"]++;
 
-    var pr = row[5] || "Tidak Diketahui";
+    var pr = row[5] || "Lainnya";
     stats.prodi[pr] = (stats.prodi[pr] || 0) + 1;
   });
 
